@@ -1,0 +1,777 @@
+---
+title: "Redes Neuronales - Heart Disease"
+author: "Sergio - Juan"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+# Detección de Ataques al Corazón
+Elegimos un conjunto de datos que proporciona información sobre **enfermedades cardíacas**.
+
+Aplicando el algoritmo de redes neuronales el objetivo es predecir la probabilidad de los mismos.
+
+## Cargamos las librerias a utilizar
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(neuralnet)
+library(readr)
+library(tidyverse)# 
+library(corrplot) # 
+library(plotly)   #
+library(caret)    # creación de entrenamiento de clasificación y regresión
+library(caTools)  # 
+library(reshape2) #
+library(corrplot)
+
+library(nnet)
+
+set.seed(189)
+```
+
+## Cargamos el conjunto de datos
+```{r message=FALSE, warning=FALSE}
+# Cargamos el dataset
+heart <- read_csv("heartDisease/heart.csv")
+```
+
+### Analizamos la composición
+
+```{r}
+knitr::kable(head(heart))
+# Age: Edad
+# Sex: Género
+# ChestPainType: TipoDolorPecho 
+# RestingBP: PresionSangreReposo 
+# Cholesterol: Colesterol 
+# FastingBS: AzucarSangreEnAyunas 
+# RestingECG: ElectroCardioGramaEnReposo 
+# MaxHR: FrecuenciaCardíacaMáxima
+# ExerciceAngina: AnginaInducidaEnEjercicio
+# Oldpeak: Valor del segmento ST
+# ST_Slope: Pendiente del segmento ST
+# HeartDisease: Enfermedad Cardiovascular
+
+
+```
+
+```{r}
+knitr::kable(summary(heart))
+```
+
+```{r}
+str (heart)
+# Age: Edad
+# Sex: Género
+# ChestPainType: TipoDolorPecho 
+# RestingBP: PresionDeSangreEnReposo 
+# Cholesterol: Colesterol 
+# FastingBS: AzucarEnSangrEnAyunas 
+# RestingECG: ElectroCardioGramaEnReposo 
+# MaxHR: FrecuenciaCardíacaMáxima
+# ExerciceAngina: AnginaEnEjercicio
+# Oldpeak: Valor del segmento ST
+# ST_Slope: Pendiente del segmento ST
+# HeartDisease: Enfermedad Cardiovascular
+
+# Este conjunto de datos contiene 11 variables relacionadas con el diagnóstico del paciente y una variable de resultado que indica la presencia o ausencia de enfermedad cardíaca
+```
+### Comenzamos con un analisis exploratorio de sus variables y su relación con la enfermedad.
+
+### Sex
+
+Es el género del paciente.
+
+```{r}
+knitr::kable(table(heart$Sex))
+```
+
+Vemos que la muestra se encuentra desbalanceada, teniendo casi 4 hombres por cada mujer.
+
+Analizamos la relación entre el género y la enfermedad:
+```{r}
+# Calcular la frecuencia de grupos para personas enfermas
+freq_enfermas <- table(heart$Sex[heart$HeartDisease == "1"])
+
+# Calcular la frecuencia de grupos para personas no enfermas
+freq_no_enfermas <- table(heart$Sex[heart$HeartDisease == "0"])
+
+# Crear el gráfico de barras
+barplot(rbind(freq_enfermas, freq_no_enfermas), 
+        beside = TRUE, 
+        col = c(rgb(1,0,0,0.5), rgb(0,0,1,0.5)),
+        main = "Gráfico de Barras para Género de Personas Enfermas y No Enfermas",
+        xlab = "Género",
+        ylab = "Frecuencia",
+        legend.text = c("Enfermas", "No Enfermas"),
+        args.legend = list(x = "topright"))
+
+```
+Podemos ver que la frecuencia de aparición de enfermedades es mucho mayor en los hombres que en las mujeres.
+
+Procedemos a convertirla la variable en numérica:
+
+```{r}
+heart$Sex <- ifelse(heart$Sex == "M", 1, 0)
+knitr::kable(unique(heart$Sex))
+```
+
+### RestingECG
+
+Corresponde al resultado de un Electrocardiograma en reposo. Los valores posibles son:
+
+```{r}
+knitr::kable(unique(heart$RestingECG))
+```
+
+los cuales representan:
+
+-   Normal: Normal
+
+-   ST: having ST-T wave abnormality (T wave inversions and/or ST elevation or depression of \> 0.05 mV)
+Las anomalías en las ondas ST-T pueden representar patología cardíaca o ser una variante normal. 
+La interpretación de los hallazgos depende del contexto clínico.
+
+-   LVH: showing probable or definite left ventricular hypertrophy
+LVH (hipertrofia ventricular izquierda) se refiere al agrandamiento anormal del músculo del ventrículo izquierdo del corazón. Esto puede ser causado por condiciones como hipertensión arterial, enfermedad cardíaca o trastornos genéticos
+
+Dado que son tres valores posibles, se realizará para esta variable una codificación del tipo OneHot.
+
+Analizamos la frecuencia de enfermedades frente a esta variable:
+
+```{r}
+# Calcular la frecuencia de grupos para personas enfermas
+freq_enfermas <- table(heart$RestingECG[heart$HeartDisease == "1"])
+
+# Calcular la frecuencia de grupos para personas no enfermas
+freq_no_enfermas <- table(heart$RestingECG[heart$HeartDisease == "0"])
+
+# Crear el gráfico de barras
+barplot(rbind(freq_enfermas, freq_no_enfermas), 
+        beside = TRUE, 
+        col = c(rgb(1,0,0,0.5), rgb(0,0,1,0.5) ),
+        main = "Gráfico de Barras para RestingECG de Personas Enfermas y No Enfermas",
+        xlab = "RestingECG",
+        ylab = "Frecuencia",
+        legend.text = c("Enfermas", "No Enfermas"),
+        args.legend = list(x = "topright"))
+
+```
+
+En este caso vemos que NO hay una clara relación entre una categoría y la frecuencia de aparición de enfermedades.
+
+### ExerciseAngina
+
+Representa los casos que tuvieron Angina durante el ejercicio o si el ejercicio indujo la misma.
+
+```{r}
+knitr::kable(table(heart$ExerciseAngina))
+```
+
+Analizamos la relación entre la variable y la aparición de la enfermedad:
+```{r}
+# Calcular la frecuencia de grupos para personas enfermas
+freq_enfermas <- table(heart$ExerciseAngina[heart$HeartDisease == "1"])
+
+# Calcular la frecuencia de grupos para personas no enfermas
+freq_no_enfermas <- table(heart$ExerciseAngina[heart$HeartDisease == "0"])
+
+# Crear el gráfico de barras
+barplot(rbind(freq_enfermas, freq_no_enfermas), 
+        beside = TRUE, 
+        col = c( rgb(1,0,0,0.5), rgb(0,0,1,0.5)),
+        main = "Gráfico de Barras para Angina de Personas Enfermas y No Enfermas",
+        xlab = "Angina",
+        ylab = "Frecuencia",
+        legend.text = c("Enfermas", "No Enfermas"),
+        args.legend = list(x = "topright"))
+
+```
+Vemos que para las personas que presentan angina en ejercicio son mucho más frecuentes los ataques cardíacos.
+
+Vemos que la variable presenta dos posibles valores, por lo que los convertimos a unos y ceros:
+
+```{r}
+heart$ExerciseAngina <- ifelse(heart$ExerciseAngina == "Y", 1, 0)
+knitr::kable(unique(heart$ExerciseAngina))
+```
+
+### ST_Slope
+
+The slope of the peak exercise ST segment.
+
+Indicador de la pendiente del segmento ST: tiene 3 valores:
+alta (es normal o saludable)
+plana (tiene cambios minimos se considera normal o saludable)
+baja (indica mayor probabilidad de enfermedades cardiacas)
+
+```{r}
+knitr::kable(table(heart$ST_Slope))
+```
+
+Los valores representan:
+
+-   Up: upsloping
+
+-   Flat: flat
+
+-   Down: downsloping
+
+Analizamos la relación con la aparición de enfermedades:
+
+```{r}
+# Calcular la frecuencia de grupos para personas enfermas
+freq_enfermas <- table(heart$ST_Slope[heart$HeartDisease == "1"])
+
+# Calcular la frecuencia de grupos para personas no enfermas
+freq_no_enfermas <- table(heart$ST_Slope[heart$HeartDisease == "0"])
+
+# Crear el gráfico de barras
+barplot(rbind(freq_enfermas, freq_no_enfermas), 
+        beside = TRUE, 
+        col = c( rgb(1,0,0,0.5), rgb(0,0,1,0.5)),
+        main = "Gráfico de Barras para ST_Slope de Personas Enfermas y No Enfermas",
+        xlab = "ST_Slope",
+        ylab = "Frecuencia",
+        legend.text = c("Enfermas", "No Enfermas"),
+        args.legend = list(x = "topright"))
+
+```
+
+Vemos que cuando no hay pendiente es cuando se presentan mayormente los casos de ataques cardíacos.
+
+### ChestPainType
+
+Representa el tipo de dolor en el pecho del paciente.
+
+```{r}
+knitr::kable(table(heart$ChestPainType))
+```
+
+Los valores posibles son:
+
+-   TA: Angina Típica
+
+-   ATA: Angina Atipica
+
+-   NAP: Dolor No-Anginal
+
+-   ASY: Asintomatico
+
+
+Esta variable también se codificara con One Hot.
+
+Analizamos  la relación con los ataques cardíacos:
+```{r}
+# Calcular la frecuencia de grupos para personas enfermas
+freq_enfermas <- table(heart$ChestPainType[heart$HeartDisease == "1"])
+
+# Calcular la frecuencia de grupos para personas no enfermas
+freq_no_enfermas <- table(heart$ChestPainType[heart$HeartDisease == "0"])
+
+# Crear el gráfico de barras
+barplot(rbind(freq_enfermas, freq_no_enfermas), 
+        beside = TRUE, 
+        col = c( rgb(1,0,0,0.5), rgb(0,0,1,0.5)),
+        main = "Gráfico de Barras para Dolor del Pecho de Personas Enfermas y No Enfermas",
+        xlab = "Dolor del Pecho",
+        ylab = "Frecuencia",
+        legend.text = c("Enfermas", "No Enfermas"),
+        args.legend = list(x = "topright"))
+
+```
+Vemos que cuando tenemos casos asintomáticos son más frecuentes los ataques.
+
+### Codificación las variables 
+Utilizamos la función dummy para crear variables dummy para realizar onehot encoding
+Las variables dummy son una técnica común en estadística y aprendizaje automático para representar datos categóricos o nominales de manera binaria.
+El proceso de one-hot encoding implica convertir cada categoría en una columna separada, donde se utiliza un valor # binario (0 o 1) para indicar si pertenece o no a esa categoría.
+
+```{r}
+
+dummy <- dummyVars(" ~ .", data=heart)
+newdata <- data.frame(predict(dummy, newdata = heart)) 
+newdata$ChestPainType <- NULL
+newdata$RestingECG <- NULL
+newdata$ST_Slope <- NULL
+data <- newdata
+```
+
+Analizamos el dataframe resultante:
+
+```{r}
+knitr::kable(head(data))
+```
+
+```{r}
+str (data)
+```
+
+
+Vemos que ahora contamos con más columnas, sin embargo, todas son numéricas.
+
+### Age
+Las edades de los pacientes se encuentran divididas de la siguiente manera:
+
+```{r}
+# Crear el histograma
+hist(data$Age[which(data$HeartDisease == "1")], 
+     col = rgb(1,0,0,0.5), 
+     main = "Histograma de Edad para Personas Enfermas", 
+     xlab = "Edad",
+     ylab = "Frecuencia")
+
+# Añadir histograma para personas no enfermas
+hist(data$Age[which(data$HeartDisease == "0")], 
+     col = rgb(0,0,1,0.5), 
+     add = TRUE)
+
+# Añadir leyenda
+legend("topright", 
+       legend = c("Ataques", "No Ataques"), 
+       fill = c("red", "blue"))
+```
+
+De este grafico podemos concluir, algo que a intuitivamente se sabe, que es que la probabilidad de un ataque al corazón aumenta con el aumento de las edades. Esto no significa que sea imposible a edades menores, sólo que la frecuencia de aparición se incrementa.
+
+
+### RestingBP
+
+Es la presión arterial en estado de reposo, medida en mm de Hg.
+
+```{r}
+# Obtener el rango de edad máximo y mínimo para ambos grupos
+min_BP <- min(data$RestingBP)
+max_BP <- max(data$RestingBP)
+
+# Definir el número de intervalos deseado para el histograma
+num_breaks <- 10  # Este número puede ajustarse según tus preferencias
+
+# Calcular el ancho de los intervalos de clase
+break_width <- (max_BP - min_BP) / num_breaks
+
+# Calcular los puntos de corte para los intervalos de clase
+breaks <- seq(min_BP, max_BP + break_width, by = break_width)
+
+# Crear el histograma
+hist(data$RestingBP[which(data$HeartDisease == "1")], 
+     col = rgb(1,0,0,0.5), 
+     main = "Histograma de Presión para Personas Enfermas", 
+     xlab = "Presión",
+     ylab = "Frecuencia",
+     breaks = breaks)
+
+# Añadir histograma para personas no enfermas
+hist(data$RestingBP[which(data$HeartDisease == "0")], 
+     col = rgb(0,0,1,0.5), 
+     add = TRUE,
+     breaks = breaks)
+
+# Añadir leyenda
+legend("topright", 
+       legend = c("Ataques", "No Ataques"), 
+       fill = c("red", "blue"))
+```
+
+Vemos que al igual que con la edad, la frecuencia de aparición de ataques aumenta cuanto mayor es la presión sanguínea en estado de reposo.
+
+### Cholesterol
+
+Es el resultado de colesterol del paciente.
+
+```{r}
+# Obtener el rango de edad máximo y mínimo para ambos grupos
+min_Col <- min(data$Cholesterol)
+max_Col <- max(data$Cholesterol)
+
+# Definir el número de intervalos deseado para el histograma
+num_breaks <- 10  # Este número puede ajustarse según tus preferencias
+
+# Calcular el ancho de los intervalos de clase
+break_width <- (max_Col - min_Col) / num_breaks
+
+# Calcular los puntos de corte para los intervalos de clase
+breaks <- seq(min_Col, max_Col + break_width, by = break_width)
+
+# Crear el histograma
+hist(data$Cholesterol[which(data$HeartDisease == "1")], 
+     col = rgb(1,0,0,0.5), 
+     main = "Histograma de Colesterol para Personas Enfermas", 
+     xlab = "Colesterol",
+     ylab = "Frecuencia",
+     breaks = breaks)
+
+# Añadir histograma para personas no enfermas
+hist(data$Cholesterol[which(data$HeartDisease == "0")], 
+     col = rgb(0,0,1,0.5), 
+     add = TRUE,
+     breaks = breaks)
+
+# Añadir leyenda
+legend("topright", 
+       legend = c("Ataques", "No Ataques"), 
+       fill = c("red", "blue"))
+```
+
+En este caso, tenemos dos puntos importantes a remarcar, si tenemos valores muy bajos de colesterol, lo cual se suele relacionar con un HDL inferior al recomendado, tenemos una gran concentración de enfermedades cardiovasculares.
+Por otro lado, en valores excesivamente altos, no se logra apreciar un incremento excesivo de casos.
+
+### Fasting Blood Sugar
+
+Es la concentración de azúcar en sangre en ayunas. Como podemos ver es una variable categórica, donde se coloca 1 si es mayor a 120 mg/dl y 0 en caso contrario.
+
+```{r}
+# Calcular la frecuencia de grupos para personas enfermas
+freq_enfermas <- table(data$FastingBS[data$HeartDisease == "1"])
+
+# Calcular la frecuencia de grupos para personas no enfermas
+freq_no_enfermas <- table(data$FastingBS[data$HeartDisease == "0"])
+
+# Crear el gráfico de barras
+barplot(rbind(freq_enfermas, freq_no_enfermas), 
+        beside = TRUE, 
+        col = c(rgb(0,0,1,0.5), rgb(1,0,0,0.5)),
+        main = "Gráfico de Barras para Azúcar en Sangre de Personas Enfermas y No Enfermas",
+        xlab = "Azúcar en Sangre",
+        ylab = "Frecuencia",
+        legend.text = c("Enfermas", "No Enfermas"),
+        args.legend = list(x = "topright"))
+
+```
+
+Vemos claramente que un azucar elevado es un gran indicador de la posibilidad de sufrir un ataque.
+
+### Max HR
+
+Representa la máxima frecuencia cardíaca alguna vez alcanzada.
+
+```{r}
+# Obtener el rango de edad máximo y mínimo para ambos grupos
+min_HR <- min(data$MaxHR)
+max_HR <- max(data$MaxHR)
+
+# Definir el número de intervalos deseado para el histograma
+num_breaks <- 10  # Este número puede ajustarse según tus preferencias
+
+# Calcular el ancho de los intervalos de clase
+break_width <- (max_HR - min_HR) / num_breaks
+
+# Calcular los puntos de corte para los intervalos de clase
+breaks <- seq(min_HR, max_HR + break_width, by = break_width)
+
+# Crear el histograma
+hist(data$MaxHR[which(data$HeartDisease == "1")], 
+     col = rgb(1,0,0,0.5), 
+     main = "Histograma de MaxHR para Personas Enfermas", 
+     xlab = "MaxHR",
+     ylab = "Frecuencia",
+     breaks = breaks)
+
+# Añadir histograma para personas no enfermas
+hist(data$MaxHR[which(data$HeartDisease == "0")], 
+     col = rgb(0,0,1,0.5), 
+     add = TRUE,
+     breaks = breaks)
+
+# Añadir leyenda
+legend("topright", 
+       legend = c("Ataques", "No Ataques"), 
+       fill = c("red", "blue"))
+```
+
+En este caso, contrintuitivamente, vemos que a una menor Frecuencia Cardíaca alcanzada, es más probable que tengas un atáque cardíaco.
+
+### OldPeak
+Es el valor numérico de la pendiente del sector ST del Electrocardiograma.
+
+```{r}
+# Obtener el rango de edad máximo y mínimo para ambos grupos
+min_ST <- min(data$Oldpeak)
+max_ST <- max(data$Oldpeak)
+
+# Definir el número de intervalos deseado para el histograma
+num_breaks <- 10  # Este número puede ajustarse según tus preferencias
+
+# Calcular el ancho de los intervalos de clase
+break_width <- (max_ST - min_ST) / num_breaks
+
+# Calcular los puntos de corte para los intervalos de clase
+breaks <- seq(min_ST, max_ST + break_width, by = break_width)
+
+# Crear el histograma
+hist(data$Oldpeak[which(data$HeartDisease == "1")], 
+     col = rgb(1,0,0,0.5), 
+     main = "Histograma de OldPeak para Personas Enfermas", 
+     xlab = "OldPeak",
+     ylab = "Frecuencia",
+     breaks = breaks)
+
+# Añadir histograma para personas no enfermas
+hist(data$Oldpeak[which(data$HeartDisease == "0")], 
+     col = rgb(0,0,1,0.5), 
+     add = TRUE,
+     breaks = breaks)
+
+# Añadir leyenda
+legend("topright", 
+       legend = c("Ataques", "No Ataques"), 
+       fill = c("red", "blue"))
+```
+
+Podemos ver en este caso con claridad, que a valores mayores a 1 es mucho mayor la frecuencia de apparición de ataques cardíacos.
+
+### Heart Disease
+```{r}
+data$HeartDisease -> heart$HeartDisease.as.factor
+```
+
+## Análisis de Correlaciones
+
+```{r}
+# Cálculo de la matriz de correlación
+matriz_cor <- cor(data)
+
+# Personalizar la paleta de colores
+mi_paleta <- colorRampPalette(c(rgb(0,0,1,0.5), "white", rgb(1,0,0,0.5)))(100)
+
+# Crear el gráfico de matriz de correlación
+corrplot(matriz_cor, 
+         method = "color",  # Usar colores para representar la magnitud de la correlación
+         col = mi_paleta,  # Especificar la paleta de colores personalizada
+         type = "upper",   # Mostrar solo la mitad superior de la matriz (evita duplicación de información)
+         order = "hclust", # Ordenar las variables utilizando clustering jerárquico
+         addCoef.col = "black", # Color del texto de los coeficientes de correlación
+         tl.col = "black",      # Color de las etiquetas
+         tl.srt = 45,          # Ángulo de inclinación de las etiquetas
+         mar = c(0, 0, 2, 0),  # Ajustar los márgenes del gráfico
+         number.digits = 1,
+         number.cex = 0.5)           
+
+```
+Vemos variables con altas correlaciones, especialmente entre las que surgieron del One Hot Encoder, sería una posibilidad eliminarlas.
+
+## Dividir en Train y Test 
+
+```{r}
+proporcion_train <- 0.7
+
+# Dividir los datos en conjuntos de entrenamiento y prueba
+indices <- createDataPartition(data$HeartDisease, p = proporcion_train, list = FALSE)
+train_data <- data[indices, ]
+test_data <- data[-indices, ]
+```
+
+## Estandarización de Variables
+```{r}
+# Estandarizar las variables en el conjunto de entrenamiento
+train_data_scaled <- as.data.frame(scale(train_data[, -19]))  # Excluir la variable de respuesta (en este caso, Species)
+attr(train_data_scaled, "scaled:center") <- colMeans(train_data[, -19])
+attr(train_data_scaled, "scaled:scale") <- apply(train_data[, -19], 2, sd)
+
+# Copiar la variable de respuesta al conjunto de datos estandarizado de entrenamiento
+train_data_scaled$HeartDisease <- train_data$HeartDisease
+
+# Estandarizar las variables en el conjunto de prueba usando los parámetros del conjunto de entrenamiento
+test_data_scaled <- as.data.frame(scale(test_data[, -19], center = attr(train_data_scaled, "scaled:center"), scale = attr(train_data_scaled, "scaled:scale")))
+
+# Copiar la variable de respuesta al conjunto de datos estandarizado de prueba
+test_data_scaled$HeartDisease <- test_data$HeartDisease
+
+#train_data_scaled$HeartDisease <- as.factor(train_data_scaled$HeartDisease)
+```
+
+
+## Red Neuronal
+A partir de este dataset, lo que se busca es predecir la probabilidad de un ataque al corazón.
+
+
+```{r message=FALSE, warning=FALSE}
+# Definir control del entrenamiento con validación cruzada
+ctrl <- trainControl(method = "cv", number = 5)
+
+# Definir la cuadrícula de hiperparámetros
+grid <- expand.grid(size = c(1, 2, 3, 4, 5, 10, 15), decay = c(0, 0.01, 0.1))
+
+# Entrenar el modelo utilizando Grid Search
+set.seed(123)
+model <- train(HeartDisease ~ ., 
+               data = train_data_scaled, 
+               method = "nnet", 
+               linout = TRUE,  # Utilizar la función de activación lineal en la capa de salida
+               trace = FALSE,  # Desactivar el seguimiento de iteraciones para mejorar la velocidad
+               maxit = 1000,   # Número máximo de iteraciones
+               trControl = ctrl, 
+               tuneGrid = grid)
+
+# Mostrar los resultados
+print(model)
+
+```
+
+```{r}
+plot(model)
+
+```
+
+
+```{r}
+# Predecir clases en el conjunto de datos de prueba
+test_data_scaled$predicciones <- predict(model, newdata = test_data_scaled)
+test_data_scaled$predicciones <- ifelse(test_data_scaled$predicciones>0.5, 1, 0)
+# Construir matriz de confusión
+confusion <- table(Real = test_data_scaled$HeartDisease, Predicción = test_data_scaled$predicciones)
+
+# Mostrar la matriz de confusión
+knitr::kable(confusion)
+```
+
+```{r}
+
+      sexo <- c("masculino", "femenino")
+      chestpain <- c("ASY", "ATA", "NAP", "TA")
+      ECG <- c("Normal", "ST", "LVH")
+      ST <- c("Down", "Flat", "UP")
+      Ang <- c("Si", "No")
+```
+
+```{r}
+column <- colnames(test_data[, -19])
+dato <- matrix(c(35, 1, 1, 0, 0, 0, 145, 89, 50, 0, 0, 1, 190, 1, 4, 0, 1, 0 ),
+                 nrow=1, ncol=18, byrow = T) 
+nuevos.normalizados <- as.data.frame(scale(dato, center = attr(train_data_scaled, "scaled:center"), scale = attr(train_data_scaled, "scaled:scale")))
+names(nuevos.normalizados) <- column
+prediccion <- predict(model, newdata = nuevos.normalizados) 
+```
+
+
+```{r}
+library(shiny)
+
+#Define UI for application that draws a histogram
+ui <- fluidPage(
+  
+  
+  
+  titlePanel('Detección Temprana de Ataques Cardíacos'),
+
+  sidebarLayout(
+    sidebarPanel(
+      wellPanel(
+          sliderInput("Edad", "Inserte su Edad:",
+                  min = 1, max = 80, value = 25, step = 1),
+          br(),
+
+          selectInput('Sexo', 'Inserte su Género:', choices=sexo),
+          br(),
+          
+          sliderInput("presion", "Inserte su Presión Arterial en Reposo:",
+                  min = 0, max = 200, value = 125, step = 1),
+          br(),
+          
+          selectInput('DolorPecho', 'Presenta Sintomas de Dolor en el Pecho:', choices=chestpain),
+          br(),
+          
+          sliderInput("colesterol", "Inserte el colesterol en su sangre:",
+                  min = 0, max = 603, value = 200, step = 1),
+          br(),
+          
+          sliderInput("Azucar", "Inserte su valor de azúcar en ayunas:",
+                  min = 0, max = 1, value = 1, step = 1),
+          br(),
+          
+          sliderInput("MaxFrecuencia", "Inserte su valor de frecuencia Cardíaca máxima:",
+                  min = 0, max = 202, value = 150, step = 1),
+          br(),
+          
+          sliderInput("OldPeak", "Inserte su valor del segmento ST:",
+                  min = -3, max = 7, value = 2, step = 0.1),
+          br(),
+          
+          selectInput('STSlope', 'Inserte la pendiente del segmento ST:', choices=ST),
+          br(),
+          
+          selectInput('Angina', 'Presentó Angina durante ejercicio:', choices=Ang),
+          br(),
+          
+          selectInput('ECG', 'Inserte el estado de su electrocardiograma en reposo:', choices=ECG),
+          br()
+        )
+    ),
+      
+    #Mostrar Ventas Estimadas
+    mainPanel(
+      h2("Clase Recomendada"),
+      fluidRow(verbatimTextOutput("Clase"))
+    )
+    
+  )
+
+    
+)
+
+
+
+#Define server logic required to draw a histogram
+server <- function(input, output) {
+  clase_recomendada <- reactive({
+    
+      
+      #Obtenemos los valores seleccionados
+      edad <- input$Edad
+      sexo <- input$Sexo
+      presion <- input$presion
+      dolorpecho <- input$DolorPecho
+      colesterol <- input$colesterol
+      azucar <- input$Azucar
+      MAxFrecuencia <- input$MaxFrecuencia
+      oldpeak <- input$OldPeak
+      stslope <- input$STSlope
+      angina <- input$Angina
+      ecg <- input$ECG
+      
+      sexo1 <- ifelse(sexo == "masculino", 1, 0)
+      azucar <- ifelse(azucar == "1", 1, 0)
+      Ang1 <- ifelse(angina == "Si", 1, 0)
+      ecgNormal <- ifelse(ecg == "Normal", 1, 0)
+      ecgST <- ifelse(ecg == "ST", 1, 0)
+      ecgLVH <- ifelse(ecg == "LVH", 1, 0)
+      dolorASY <- ifelse(dolorpecho == "ASY", 1, 0)
+      dolorATA <- ifelse(dolorpecho == "ATA", 1, 0)
+      dolorNAP <- ifelse(dolorpecho == "NAP", 1, 0)
+      dolorTA <- ifelse(dolorpecho == "TA", 1, 0)
+      STDown <- ifelse(stslope == "Down", 1, 0)
+      STFlat <- ifelse(stslope == "Flat", 1, 0)
+      STUp <- ifelse(stslope == "Up", 1, 0)
+      
+      #attr(train_data_scaled, "scaled:center") <- colMeans(train_data[, -19])
+#attr(train_data_scaled, "scaled:scale") <- apply(train_data[, -19], 2, sd)
+
+      dato <- matrix(c(edad, sexo1, dolorASY, dolorATA, dolorNAP, dolorTA, presion, colesterol, azucar, ecgLVH, ecgNormal, ecgST, MAxFrecuencia, Ang1, oldpeak, STDown, STFlat, STUp ),
+                 nrow=1, ncol=18, byrow = T) 
+      
+    
+      nuevos.normalizados <- as.data.frame(scale(dato, center = attr(train_data_scaled, "scaled:center"), scale = attr(train_data_scaled, "scaled:scale")))
+      
+      
+names(nuevos.normalizados) <- column
+    clase_recomendada <- ifelse(predict(model, newdata = nuevos.normalizados) >= 0.5, "Tiene Chances de Padecer un Ataque Cardíaco", "Tiene pocas probabilidades de Padecer un Ataque CArdíaco") 
+  })
+  #Muestro la respuesta
+  output$Clase <- renderText({
+    
+    clase_recomendada()
+  })
+  
+  
+  
+  
+  
+  
+  
+}
+
+# Run the aplication
+shinyApp(ui = ui, server = server)
+```
